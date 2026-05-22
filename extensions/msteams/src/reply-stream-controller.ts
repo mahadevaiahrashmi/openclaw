@@ -81,7 +81,7 @@ export function createTeamsReplyStreamController(params: {
   const stream = shouldUseNativeStream ? params.context.stream : undefined;
 
   let tokensEmitted = false;
-  let started = false;
+  let streamFinalizationPending = false;
   let canceledLocally = false;
   // Set when `stream.emit/close` fails for a non-cancel reason after we've
   // already started streaming. Differentiates "user pressed Stop" from "the
@@ -91,6 +91,7 @@ export function createTeamsReplyStreamController(params: {
   let streamFailed = false;
   let lastInformativeText = "";
   let progressLines: Array<string | ChannelProgressDraftLine> = [];
+  let pendingFinalPayload: Maybe<ReplyPayload>;
   // openclaw's reply pipeline calls onPartialReply with the cumulative text on
   // each chunk, but the SDK's HttpStream appends each emit() to its internal
   // text buffer (this.text += activity.text). Forwarding cumulative text into
@@ -99,6 +100,11 @@ export function createTeamsReplyStreamController(params: {
   let emittedTextLength = 0;
 
   const wasCanceled = () => canceledLocally || Boolean(stream?.canceled);
+
+  const fallbackPayloadForSuppressedFinal = (payload: ReplyPayload): ReplyPayload => {
+    const hasMedia = Boolean(payload.mediaUrl || payload.mediaUrls?.length);
+    return hasMedia ? { ...payload, mediaUrl: undefined, mediaUrls: undefined } : payload;
+  };
 
   /**
    * Render the current informative status line into the streaming card. Pulls
@@ -142,21 +148,23 @@ export function createTeamsReplyStreamController(params: {
 
   return {
     async onReplyStart(): Promise<void> {
-      if (!stream || started || wasCanceled()) {
-        return;
-      }
-      started = true;
-      // Render the initial informative line. In progress mode, this is the
-      // configured rotating label (no tool lines yet). In partial mode, it
-      // shows briefly until token streaming takes over.
-      renderInformativeUpdate();
+      // Starting a reply is not enough to decide that native streaming should
+      // own delivery. Wait for text tokens or explicit progress work so
+      // no-token replies keep the normal block-delivery path.
+      return;
     },
 
     onPartialReply(payload: { text?: string }): void {
       // Partial-token streaming only fires in "partial" mode. In "progress"
       // mode, openclaw's pipeline doesn't deliver tokens — the model output
       // arrives as a single payload at preparePayload time.
-      if (!stream || !payload.text || wasCanceled() || streamMode !== "partial") {
+      if (
+        !stream ||
+        !payload.text ||
+        wasCanceled() ||
+        streamMode !== "partial" ||
+        streamFinalizationPending
+      ) {
         return;
       }
       // Convert cumulative-text from the pipeline into deltas for the SDK's
@@ -269,6 +277,9 @@ export function createTeamsReplyStreamController(params: {
       // the full reply instead of the truncated streamed prefix.
       if (tokensEmitted && !streamFailed) {
         const hasMedia = Boolean(payload.mediaUrl || payload.mediaUrls?.length);
+        pendingFinalPayload = fallbackPayloadForSuppressedFinal(payload);
+        streamFinalizationPending = true;
+        tokensEmitted = false;
         return hasMedia ? { ...payload, text: undefined } : undefined;
       }
       // Progress mode (or partial mode that received no tokens — e.g. a
@@ -279,7 +290,8 @@ export function createTeamsReplyStreamController(params: {
       if (streamMode === "progress" && payload.text) {
         try {
           stream.emit(payload.text);
-          tokensEmitted = true;
+          pendingFinalPayload = fallbackPayloadForSuppressedFinal(payload);
+          streamFinalizationPending = true;
           const hasMedia = Boolean(payload.mediaUrl || payload.mediaUrls?.length);
           return hasMedia ? { ...payload, text: undefined } : undefined;
         } catch (err) {
@@ -297,9 +309,9 @@ export function createTeamsReplyStreamController(params: {
       return payload;
     },
 
-    async finalize(): Promise<void> {
-      if (!stream || !tokensEmitted || wasCanceled()) {
-        return;
+    async finalize(): Promise<Maybe<ReplyPayload>> {
+      if (!stream || !streamFinalizationPending || wasCanceled()) {
+        return undefined;
       }
       // Emit a final MessageActivity carrying the AI-generated marker and (if
       // enabled) the feedback channelData. The SDK's HttpStream merges this
@@ -323,11 +335,21 @@ export function createTeamsReplyStreamController(params: {
           entities: finalEntities,
           channelData: finalChannelData,
         });
-        await stream.close();
+        const result = await stream.close();
+        streamFinalizationPending = false;
+        if (!result) {
+          const fallback = pendingFinalPayload;
+          pendingFinalPayload = undefined;
+          return fallback;
+        }
+        pendingFinalPayload = undefined;
+        return undefined;
       } catch (err) {
         if (isStreamCancelledError(err)) {
           canceledLocally = true;
-          return;
+          pendingFinalPayload = undefined;
+          streamFinalizationPending = false;
+          return undefined;
         }
         // Non-cancel failure during the closing emit/close. The streamed
         // prefix is already visible to the user; the only loss is the
@@ -336,9 +358,13 @@ export function createTeamsReplyStreamController(params: {
         // swallow the error — a thrown finalize would otherwise blow up
         // the reply pipeline after the user already saw the response.
         streamFailed = true;
+        streamFinalizationPending = false;
         params.log?.warn?.(
           `msteams stream finalize failed: ${err instanceof Error ? err.message : String(err)}`,
         );
+        const fallback = pendingFinalPayload;
+        pendingFinalPayload = undefined;
+        return fallback;
       }
     },
 

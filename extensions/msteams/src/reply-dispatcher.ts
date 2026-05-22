@@ -13,6 +13,7 @@ import {
   resolveChannelMediaMaxBytes,
   type OpenClawConfig,
   type MSTeamsReplyStyle,
+  type ReplyPayload,
   type RuntimeEnv,
 } from "../runtime-api.js";
 import type { MSTeamsAccessTokenProvider } from "./attachments/types.js";
@@ -231,6 +232,17 @@ export function createMSTeamsReplyDispatcher(params: {
     });
   };
 
+  const queueReplyPayload = (payload: ReplyPayload) => {
+    const messages = renderReplyPayloadsToMessages([payload], {
+      textChunkLimit: params.textLimit,
+      chunkText: true,
+      mediaMode: "split",
+      tableMode,
+      chunkMode,
+    });
+    pendingMessages.push(...messages);
+  };
+
   const flushPendingMessages = async () => {
     if (pendingMessages.length === 0) {
       return;
@@ -298,14 +310,7 @@ export function createMSTeamsReplyDispatcher(params: {
         return;
       }
 
-      const messages = renderReplyPayloadsToMessages([preparedPayload], {
-        textChunkLimit: params.textLimit,
-        chunkText: true,
-        mediaMode: "split",
-        tableMode,
-        chunkMode,
-      });
-      pendingMessages.push(...messages);
+      queueReplyPayload(preparedPayload);
 
       // When block streaming is enabled, flush immediately so blocks are
       // delivered progressively instead of batching until markDispatchIdle.
@@ -342,10 +347,15 @@ export function createMSTeamsReplyDispatcher(params: {
           hint,
         });
       })
-      .then(() => {
-        return streamController.finalize().catch((err) => {
+      .then(async () => {
+        const fallbackPayload = await streamController.finalize().catch((err) => {
           params.log.debug?.("stream finalize failed", { error: formatUnknownError(err) });
+          return undefined;
         });
+        if (fallbackPayload) {
+          queueReplyPayload(fallbackPayload);
+          await flushPendingMessages();
+        }
       })
       .finally(() => {
         baseMarkDispatchIdle();

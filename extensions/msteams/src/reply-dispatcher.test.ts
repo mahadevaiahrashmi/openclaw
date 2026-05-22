@@ -50,7 +50,7 @@ function createStreamMock(): StreamMock {
   return {
     update: vi.fn(),
     emit: vi.fn(),
-    close: vi.fn(async () => {}),
+    close: vi.fn(async () => ({ id: "stream-final" })),
     canceled: false,
   };
 }
@@ -385,6 +385,26 @@ describe("createMSTeamsReplyDispatcher", () => {
     // TeamsHttpStream.update). The SDK's HttpStream accumulates the text
     // and flushes the closing activity at stream.close().
     expect(getStreamMock().emit).toHaveBeenCalledWith("partial response");
+  });
+
+  it("falls back to normal Teams delivery when native stream close returns no final activity", async () => {
+    renderReplyPayloadsToMessagesMock.mockReturnValue([{ content: "fallback" }] as never);
+    sendMSTeamsMessagesMock.mockResolvedValue(["fallback-id"] as never);
+    const dispatcher = createDispatcher("personal");
+    const options = dispatcherOptions();
+    getStreamMock().close.mockResolvedValueOnce(undefined);
+
+    dispatcher.replyOptions.onPartialReply?.({ text: "streamed" });
+    await options.deliver({ text: "streamed final" });
+    await dispatcher.markDispatchIdle();
+
+    expect(renderReplyPayloadsToMessagesMock).toHaveBeenCalledWith(
+      [{ text: "streamed final" }],
+      expect.any(Object),
+    );
+    expect(sendMSTeamsMessagesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ messages: [{ content: "fallback" }] }),
+    );
   });
 
   it("sets suppressDefaultToolProgressMessages when progress tool lines are enabled", async () => {
