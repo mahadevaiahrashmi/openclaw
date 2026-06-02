@@ -20,6 +20,10 @@ export type OrphanedTrailingUserPromptMergeResult = {
 
 export type MessageMergeStrategyId = "orphan-trailing-user-prompt";
 
+/**
+ * Strategy seam for repairing active transcripts before a new inbound prompt is
+ * appended to providers that cannot accept consecutive user turns.
+ */
 export type MessageMergeStrategy = {
   id: MessageMergeStrategyId;
   mergeOrphanedTrailingUserPrompt: (
@@ -37,6 +41,10 @@ const defaultMessageMergeStrategy: MessageMergeStrategy = {
 
 let activeMessageMergeStrategy = defaultMessageMergeStrategy;
 
+/**
+ * Resolves the active merge strategy used by run attempts and transcript repair
+ * checks.
+ */
 export function resolveMessageMergeStrategy(): MessageMergeStrategy {
   return activeMessageMergeStrategy;
 }
@@ -50,5 +58,7 @@ function registerMessageMergeStrategy(strategy: MessageMergeStrategy): () => voi
 }
 
 export function registerMessageMergeStrategyForTest(strategy: MessageMergeStrategy): () => void {
+  // Tests must restore the exact previous strategy because run attempts share
+  // this process-local seam across runtime-contract suites.
   return registerMessageMergeStrategy(strategy);
 }
