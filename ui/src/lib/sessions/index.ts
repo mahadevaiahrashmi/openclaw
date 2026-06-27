@@ -42,6 +42,7 @@ export type { SessionUsageQuery } from "./usage.ts";
 export type SessionState = {
   result: SessionsListResult | null;
   agentId: string | null;
+  modelOverrides: Readonly<Record<string, string | null>>;
   loading: boolean;
   error: string | null;
   deletedKeys: readonly string[];
@@ -130,6 +131,7 @@ export type SessionCapability = {
     patch: SessionPatch,
     options?: { agentId?: string },
   ) => Promise<SessionsPatchResult | null>;
+  setModelOverride: (key: string, value: string | null | undefined) => void;
   delete: (key: string, options?: SessionDeleteOptions) => Promise<boolean>;
   deleteMany: (targets: readonly SessionDeleteTarget[]) => Promise<SessionDeleteBatchResult>;
   reset: (key: string, options?: SessionResetOptions) => Promise<void>;
@@ -462,6 +464,7 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
   let state: SessionState = {
     result: null,
     agentId: null,
+    modelOverrides: {},
     loading: false,
     error: null,
     deletedKeys: [],
@@ -491,6 +494,30 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
     }
   };
 
+  const setModelOverride = (key: string, value: string | null | undefined) => {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) {
+      return;
+    }
+    const modelOverrides = { ...state.modelOverrides };
+    if (value === undefined) {
+      if (!Object.hasOwn(state.modelOverrides, normalizedKey)) {
+        return;
+      }
+      delete modelOverrides[normalizedKey];
+    } else {
+      const normalizedValue = value === null ? null : value.trim();
+      if (
+        modelOverrides[normalizedKey] === normalizedValue &&
+        Object.hasOwn(modelOverrides, normalizedKey)
+      ) {
+        return;
+      }
+      modelOverrides[normalizedKey] = normalizedValue;
+    }
+    publish({ ...state, modelOverrides });
+  };
+
   const load = async (options: SessionListOptions & { force?: boolean }) => {
     const client = gateway.snapshot.client;
     if (!client || !gateway.snapshot.connected || disposed) {
@@ -511,6 +538,7 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
       publish({
         result: nextResult,
         agentId: options.agentId?.trim() ? normalizeAgentId(options.agentId) : null,
+        modelOverrides: state.modelOverrides,
         loading: false,
         error: null,
         deletedKeys: [],
@@ -579,14 +607,28 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
     if (!client || !gateway.snapshot.connected || disposed) {
       return null;
     }
+    const hasModelPatch = Object.hasOwn(patchParams, "model");
+    const previousModelOverride = state.modelOverrides[key.trim()];
+    if (hasModelPatch) {
+      setModelOverride(key, patchParams.model);
+    }
     try {
       const result = await requestSessionPatch(client, key, patchParams, options);
       if (disposed || gateway.snapshot.client !== client) {
+        if (hasModelPatch) {
+          setModelOverride(key, previousModelOverride);
+        }
         return null;
       }
       await refresh({ agentId: options.agentId, force: true });
+      if (hasModelPatch) {
+        setModelOverride(key, patchParams.model);
+      }
       return result;
     } catch (error) {
+      if (hasModelPatch) {
+        setModelOverride(key, previousModelOverride);
+      }
       publish({ ...state, error: String(error) });
       throw error;
     }
@@ -622,6 +664,7 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
         return false;
       }
       publish({ ...state, deletedKeys: [key] });
+      setModelOverride(key, undefined);
       await refresh({ agentId: options.agentId, force: true });
       return true;
     } catch (error) {
@@ -655,6 +698,9 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
     }
     if (deleted.length > 0 && !disposed && gateway.snapshot.client === client) {
       publish({ ...state, deletedKeys: deleted });
+      for (const key of deleted) {
+        setModelOverride(key, undefined);
+      }
       await refresh({ force: true });
     }
     return { deleted, errors };
@@ -810,7 +856,14 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
   const stopGateway = gateway.subscribe((next) => {
     if (!next.connected || !next.client) {
       subscribedClient = null;
-      publish({ result: null, agentId: null, loading: false, error: null, deletedKeys: [] });
+      publish({
+        result: null,
+        agentId: null,
+        modelOverrides: state.modelOverrides,
+        loading: false,
+        error: null,
+        deletedKeys: [],
+      });
       return;
     }
     if (subscribedClient !== next.client) {
@@ -867,6 +920,7 @@ export function createSessionCapability(gateway: SessionGateway): SessionCapabil
     refresh,
     create,
     patch,
+    setModelOverride,
     delete: remove,
     deleteMany: removeMany,
     reset,
