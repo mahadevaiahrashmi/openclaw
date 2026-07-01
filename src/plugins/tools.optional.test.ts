@@ -1590,6 +1590,115 @@ describe("resolvePluginTools optional tools", () => {
     );
   });
 
+  it("does not reuse descriptors captured before a credential becomes brokered", () => {
+    const marker = "descriptor-credential-marker";
+    const createBrokerConfig = (token: unknown) =>
+      ({
+        ...createContext().config,
+        tools: { allow: ["brokered_action"] },
+        plugins: {
+          ...createContext().config.plugins,
+          allow: [...createContext().config.plugins.allow, "broker-demo"],
+          entries: {
+            "broker-demo": { config: { service: { token } } },
+          },
+        },
+      }) as OpenClawConfig;
+    const runtimeConfig = createBrokerConfig(marker);
+    const sourceConfig = createBrokerConfig({
+      source: "env",
+      provider: "default",
+      id: "BROKER_DESCRIPTOR_TOKEN",
+    });
+    const manifestPlugin = {
+      id: "broker-demo",
+      origin: "bundled",
+      enabledByDefault: true,
+      channels: [],
+      providers: [],
+      contracts: { tools: ["brokered_action"] },
+      credentialBroker: {
+        operations: [
+          {
+            id: "action",
+            tool: "brokered_action",
+            secretInputPath: "service.token",
+            defaultBaseUrl: "https://api.example.test",
+            path: "/action",
+            method: "POST",
+            credentialHeader: "Authorization",
+            maxRequestBodyBytes: 1024,
+            maxResponseBodyBytes: 1024,
+            timeoutMs: 1000,
+          },
+        ],
+      },
+    };
+    const factory = vi.fn((rawContext: unknown) => {
+      const config = (rawContext as { config?: OpenClawConfig }).config;
+      return {
+        ...makeTool("brokered_action"),
+        description: JSON.stringify(config).includes(marker)
+          ? `brokered action ${marker}`
+          : "brokered action safe",
+      };
+    });
+    const registry = createToolRegistry([
+      {
+        pluginId: "broker-demo",
+        optional: false,
+        source: "/tmp/broker-demo.js",
+        names: ["brokered_action"],
+        factory,
+      },
+    ]);
+    loadOpenClawPluginsMock.mockReturnValue(registry);
+    installToolManifestSnapshot({ config: runtimeConfig as never, plugin: manifestPlugin });
+
+    const literalTools = resolvePluginTools({
+      context: {
+        ...createContext(),
+        config: runtimeConfig,
+        runtimeConfig,
+      } as never,
+      runtimeRegistry: registry as never,
+      toolAllowlist: ["brokered_action"],
+      credentialBrokerSourceConfig: runtimeConfig,
+    });
+    expect(literalTools[0]?.description).toContain(marker);
+    expect(factory).toHaveBeenCalledOnce();
+
+    factory.mockClear();
+    installToolManifestSnapshot({
+      config: sourceConfig as never,
+      compatibleConfigs: [runtimeConfig as never],
+      plugin: manifestPlugin,
+    });
+    const profile = resolveConversationCapabilityProfile({
+      config: sourceConfig,
+      sessionKey: "agent:main:discord:direct:alice",
+      agentId: "main",
+      messageProvider: "discord",
+      messageChannel: "discord",
+      chatType: "direct",
+      senderId: "alice",
+      workspaceDir: "/tmp",
+    });
+    const brokeredTools = resolvePluginTools({
+      context: {
+        ...createContext(),
+        config: runtimeConfig,
+        runtimeConfig,
+      } as never,
+      runtimeRegistry: registry as never,
+      toolAllowlist: ["brokered_action"],
+      credentialBrokerContext: { profile, sourceConfig, runtimeConfig },
+    });
+
+    expect(brokeredTools[0]?.description).toBe("brokered action safe");
+    expect(factory).toHaveBeenCalledOnce();
+  });
+
   it("isolates broker owners without reloading unrelated plugin tools", () => {
     const sourceConfig = {
       ...createContext().config,

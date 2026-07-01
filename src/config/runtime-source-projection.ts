@@ -1,43 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "../utils.js";
-import { createMergePatch, projectSourceOntoRuntimeShape } from "./io.write-prepare.js";
+import { projectSourceOntoRuntimeShape } from "./io.write-prepare.js";
 import { applyMergePatch } from "./merge-patch.js";
-import {
-  getRuntimeConfigSnapshot,
-  getRuntimeConfigSourceSnapshot,
-  registerRuntimeConfigSourcePair,
-} from "./runtime-snapshot.js";
+import { getRuntimeConfigSourcePair, registerRuntimeConfigSourcePair } from "./runtime-snapshot.js";
 import type { OpenClawConfig } from "./types.js";
 import { isSecretRef } from "./types.secrets.js";
-
-function isCompatibleTopLevelRuntimeProjectionShape(params: {
-  runtimeSnapshot: OpenClawConfig;
-  candidate: OpenClawConfig;
-}): boolean {
-  const runtime = params.runtimeSnapshot as Record<string, unknown>;
-  const candidate = params.candidate as Record<string, unknown>;
-  for (const key of Object.keys(runtime)) {
-    if (!Object.hasOwn(candidate, key)) {
-      return false;
-    }
-    const runtimeValue = runtime[key];
-    const candidateValue = candidate[key];
-    const runtimeType = Array.isArray(runtimeValue)
-      ? "array"
-      : runtimeValue === null
-        ? "null"
-        : typeof runtimeValue;
-    const candidateType = Array.isArray(candidateValue)
-      ? "array"
-      : candidateValue === null
-        ? "null"
-        : typeof candidateValue;
-    if (runtimeType !== candidateType) {
-      return false;
-    }
-  }
-  return true;
-}
 
 function containsSecretRef(value: unknown): boolean {
   if (isSecretRef(value)) {
@@ -95,60 +62,31 @@ function hasSecretRefRuntimeMismatch(
   );
 }
 
-/** Projects against an explicit pair only when every resolved SecretRef value still matches. */
-export function projectConfigOntoPairedRuntimeSourceSnapshot(params: {
-  config: OpenClawConfig;
+/** Applies a scoped merge while retaining only explicit runtime-to-source provenance. */
+export function applyMergePatchToPairedRuntimeConfig(params: {
   runtimeConfig: OpenClawConfig;
-  sourceConfig: OpenClawConfig;
-}): OpenClawConfig | undefined {
-  if (hasSecretRefRuntimeMismatch(params.sourceConfig, params.runtimeConfig, params.config)) {
-    return undefined;
+  patch: OpenClawConfig;
+}): OpenClawConfig {
+  const config = applyMergePatch(params.runtimeConfig, params.patch) as OpenClawConfig;
+  const sourceConfig = getRuntimeConfigSourcePair(params.runtimeConfig);
+  if (!sourceConfig) {
+    return config;
   }
-  if (params.config === params.runtimeConfig) {
-    registerRuntimeConfigSourcePair(params.config, params.sourceConfig);
-    return params.sourceConfig;
+  if (hasSecretRefRuntimeMismatch(sourceConfig, params.runtimeConfig, config)) {
+    throw new Error("Cannot override a resolved SecretRef through a runtime config merge.");
   }
   const projectedSource = projectSourceOntoRuntimeShape(
-    params.sourceConfig,
+    sourceConfig,
     params.runtimeConfig,
   ) as OpenClawConfig;
-  const runtimePatch = createMergePatch(params.runtimeConfig, params.config);
-  const patchedSource = applyMergePatch(projectedSource, runtimePatch) as OpenClawConfig;
+  const patchedSource = applyMergePatch(projectedSource, params.patch) as OpenClawConfig;
   // Merge patches replace arrays atomically, so restore authored refs after scoped changes.
   const pairedSource = restoreSecretRefs(projectedSource, patchedSource) as OpenClawConfig;
-  registerRuntimeConfigSourcePair(params.config, pairedSource);
-  return pairedSource;
+  registerRuntimeConfigSourcePair(config, pairedSource);
+  return config;
 }
 
-/** Projects a runtime-derived config back onto the active authored source snapshot. */
+/** Returns authored config only for a runtime object with an explicit source pairing. */
 export function projectConfigOntoRuntimeSourceSnapshot(config: OpenClawConfig): OpenClawConfig {
-  const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
-  const runtimeConfigSourceSnapshot = getRuntimeConfigSourceSnapshot();
-  if (!runtimeConfigSnapshot || !runtimeConfigSourceSnapshot) {
-    return config;
-  }
-  if (config === runtimeConfigSnapshot) {
-    registerRuntimeConfigSourcePair(config, runtimeConfigSourceSnapshot);
-    return runtimeConfigSourceSnapshot;
-  }
-  if (
-    !isCompatibleTopLevelRuntimeProjectionShape({
-      runtimeSnapshot: runtimeConfigSnapshot,
-      candidate: config,
-    })
-  ) {
-    return config;
-  }
-  if (hasSecretRefRuntimeMismatch(runtimeConfigSourceSnapshot, runtimeConfigSnapshot, config)) {
-    return config;
-  }
-  const projectedSource = projectSourceOntoRuntimeShape(
-    runtimeConfigSourceSnapshot,
-    runtimeConfigSnapshot,
-  ) as OpenClawConfig;
-  const runtimePatch = createMergePatch(runtimeConfigSnapshot, config);
-  const patchedSource = applyMergePatch(projectedSource, runtimePatch) as OpenClawConfig;
-  const pairedSource = restoreSecretRefs(projectedSource, patchedSource) as OpenClawConfig;
-  registerRuntimeConfigSourcePair(config, pairedSource);
-  return pairedSource;
+  return getRuntimeConfigSourcePair(config) ?? config;
 }

@@ -20,7 +20,6 @@ import { resolveMessageSecretScope } from "../../cli/message-secret-scope.js";
 import {
   getRuntimeConfigSnapshot,
   getRuntimeConfigSourceSnapshot,
-  projectConfigOntoPairedRuntimeSourceSnapshot,
   selectApplicableRuntimeConfig,
   type OpenClawConfig,
 } from "../../config/config.js";
@@ -80,17 +79,8 @@ export async function resolveQueuedReplyExecutionConfig(
   },
 ): Promise<OpenClawConfig> {
   const runtimeConfig = resolveQueuedReplyRuntimeConfig(config);
-  const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
-  const runtimeSourceConfigSnapshot = getRuntimeConfigSourceSnapshot();
   const sourceConfig =
     getRuntimeConfigSourcePair(runtimeConfig) ??
-    (runtimeConfigSnapshot && runtimeSourceConfigSnapshot
-      ? projectConfigOntoPairedRuntimeSourceSnapshot({
-          config: runtimeConfig,
-          runtimeConfig: runtimeConfigSnapshot,
-          sourceConfig: runtimeSourceConfigSnapshot,
-        })
-      : undefined) ??
     (hasSecretRefCandidate(runtimeConfig, undefined) ? runtimeConfig : undefined);
   const { resolvedConfig } = await resolveCommandSecretRefsViaGateway({
     config: runtimeConfig,

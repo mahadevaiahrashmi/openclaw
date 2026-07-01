@@ -891,6 +891,15 @@ function resolveCachedPluginTools(params: {
     if (params.existingNormalized.has(normalizeToolName(plugin.id))) {
       continue;
     }
+    if (
+      params.credentialBrokerSourceConfig &&
+      listConfiguredBrokeredToolNames({
+        sourceConfig: params.credentialBrokerSourceConfig,
+        plugin,
+      }).length > 0
+    ) {
+      continue;
+    }
     const cached = readCachedPluginToolDescriptors(
       buildPluginDescriptorCacheKey({
         plugin,
@@ -1266,16 +1275,18 @@ export function resolvePluginTools(params: {
     brokerPluginIds,
     snapshot,
   } = loadState;
+  const credentialBrokerSourceConfig =
+    params.credentialBrokerSourceConfig ?? params.credentialBrokerContext?.sourceConfig;
   const tools: AnyAgentTool[] = [];
   const finishTools = (): AnyAgentTool[] => {
     if (
       !params.omitCredentialBrokerToolsWithoutContext ||
       params.credentialBrokerContext ||
-      !params.credentialBrokerSourceConfig
+      !credentialBrokerSourceConfig
     ) {
       return tools;
     }
-    const sourceConfig = params.credentialBrokerSourceConfig;
+    const sourceConfig = credentialBrokerSourceConfig;
     const blocked = new Set(
       snapshot.plugins.flatMap((plugin) =>
         listConfiguredBrokeredToolNames({ sourceConfig, plugin }).map((toolName) =>
@@ -1323,7 +1334,7 @@ export function resolvePluginTools(params: {
     currentRuntimeConfig: currentRuntimeConfigForDescriptorCache,
     configCacheKeyMemo,
     credentialBrokerContext: params.credentialBrokerContext,
-    credentialBrokerSourceConfig: params.credentialBrokerSourceConfig,
+    credentialBrokerSourceConfig,
   });
   tools.push(...cached.tools);
   const runtimePluginIds = onlyPluginIds.filter(
@@ -1483,7 +1494,7 @@ export function resolvePluginTools(params: {
       ctx: params.context,
       manifestPlugin,
       credentialBrokerContext: params.credentialBrokerContext,
-      credentialBrokerSourceConfig: params.credentialBrokerSourceConfig,
+      credentialBrokerSourceConfig,
       declaredNames,
       factoryTimingStartedAt,
       logError: (message) => context.logger.error(message),
@@ -1646,6 +1657,15 @@ export function resolvePluginTools(params: {
   for (const [pluginId, descriptors] of capturedDescriptorsByPluginId) {
     const manifestPlugin = manifestPluginsById.get(pluginId);
     if (!manifestPlugin) {
+      continue;
+    }
+    if (
+      credentialBrokerSourceConfig &&
+      listConfiguredBrokeredToolNames({
+        sourceConfig: credentialBrokerSourceConfig,
+        plugin: manifestPlugin,
+      }).length > 0
+    ) {
       continue;
     }
     const availableToolNames = listManifestToolNamesForAvailability({

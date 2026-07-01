@@ -43,9 +43,7 @@ import {
 import { normalizeChatType } from "../../channels/chat-type.js";
 import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import { shouldSuppressLocalExecApprovalPrompt } from "../../channels/plugins/exec-approval-local.js";
-import { projectConfigOntoPairedRuntimeSourceSnapshot } from "../../config/config.js";
-import { applyMergePatch } from "../../config/merge-patch.js";
-import { getRuntimeConfigSourcePair } from "../../config/runtime-snapshot.js";
+import { applyMergePatchToPairedRuntimeConfig } from "../../config/config.js";
 import { normalizeExplicitSessionKey } from "../../config/sessions/explicit-session-key-normalization.js";
 import { resolveGroupSessionKey } from "../../config/sessions/group.js";
 import {
@@ -3055,17 +3053,11 @@ export async function dispatchReplyFromConfig(
       (await traceReplyPhase("reply.load_reply_resolver", () => loadGetReplyFromConfigRuntime()))
         .getReplyFromConfig;
     const mergedReplyConfig = params.configOverride
-      ? (applyMergePatch(cfg, params.configOverride) as OpenClawConfig)
+      ? applyMergePatchToPairedRuntimeConfig({
+          runtimeConfig: cfg,
+          patch: params.configOverride,
+        })
       : cfg;
-    const sourceConfig = params.configOverride ? getRuntimeConfigSourcePair(cfg) : undefined;
-    if (sourceConfig) {
-      // Use the dispatch's captured pair; the process-global snapshot may refresh during awaits.
-      projectConfigOntoPairedRuntimeSourceSnapshot({
-        config: mergedReplyConfig,
-        runtimeConfig: cfg,
-        sourceConfig,
-      });
-    }
     const replyConfig = withFullRuntimeReplyConfig(mergedReplyConfig);
     recordAgentDispatchStarted();
     const replyResult = await runWithDispatchAbortSignal(getDispatchAbortSignal(), () =>

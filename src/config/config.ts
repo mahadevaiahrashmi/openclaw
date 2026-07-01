@@ -9,7 +9,7 @@ export {
   getRuntimeConfigSnapshotMetadata,
   getRuntimeConfigSnapshot,
   getRuntimeConfigSourceSnapshot,
-  projectConfigOntoPairedRuntimeSourceSnapshot,
+  applyMergePatchToPairedRuntimeConfig,
   projectConfigOntoRuntimeSourceSnapshot,
   loadConfig,
   readBestEffortConfig,

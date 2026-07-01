@@ -126,7 +126,7 @@ import {
   type RuntimeConfigWriteNotification,
 } from "./runtime-snapshot.js";
 export {
-  projectConfigOntoPairedRuntimeSourceSnapshot,
+  applyMergePatchToPairedRuntimeConfig,
   projectConfigOntoRuntimeSourceSnapshot,
 } from "./runtime-source-projection.js";
 import { resolveShellEnvExpectedKeys } from "./shell-env-expected-keys.js";

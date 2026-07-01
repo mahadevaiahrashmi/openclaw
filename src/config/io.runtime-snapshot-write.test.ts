@@ -1,12 +1,13 @@
 // Covers runtime snapshot writes produced by config IO.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  projectConfigOntoPairedRuntimeSourceSnapshot,
+  applyMergePatchToPairedRuntimeConfig,
   projectConfigOntoRuntimeSourceSnapshot,
   resetConfigRuntimeState,
   setRuntimeConfigSnapshotRefreshHandler,
   setRuntimeConfigSnapshot,
 } from "./io.js";
+import { getRuntimeConfigSourcePair } from "./runtime-snapshot.js";
 import type { OpenClawConfig } from "./types.js";
 
 function createSourceConfig(): OpenClawConfig {
@@ -89,63 +90,62 @@ describe("runtime config snapshot writes", () => {
     const sourceConfig = createSourceConfig();
     const runtimeConfig = createRuntimeConfig();
     const independentConfig = createRuntimeConfig();
-    const provider = independentConfig.models?.providers?.openai;
-    if (provider) {
-      provider.apiKey = "sk-independent-config"; // pragma: allowlist secret
-    }
 
     setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
 
     expect(projectConfigOntoRuntimeSourceSnapshot(independentConfig)).toBe(independentConfig);
+    expect(getRuntimeConfigSourcePair(independentConfig)).toBeUndefined();
   });
 
-  it("rejects a stale resolved SecretRef value while preserving scoped patches", () => {
+  it("pairs a known scoped merge but rejects changed SecretRef values", () => {
     const sourceConfig = createSourceConfig();
     const runtimeConfig = createRuntimeConfig();
-    const scopedConfig = structuredClone(runtimeConfig);
-    scopedConfig.tools = { alsoAllow: ["brokered_action"] };
+    setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
 
-    expect(
-      projectConfigOntoPairedRuntimeSourceSnapshot({
-        config: scopedConfig,
-        runtimeConfig,
-        sourceConfig,
-      }),
-    ).toEqual({
+    const scopedConfig = applyMergePatchToPairedRuntimeConfig({
+      runtimeConfig,
+      patch: { tools: { alsoAllow: ["brokered_action"] } },
+    });
+    expect(scopedConfig).toEqual({
+      ...runtimeConfig,
+      tools: { alsoAllow: ["brokered_action"] },
+    });
+    expect(getRuntimeConfigSourcePair(scopedConfig)).toEqual({
       ...sourceConfig,
       tools: { alsoAllow: ["brokered_action"] },
     });
 
-    const staleConfig = structuredClone(scopedConfig);
-    const provider = staleConfig.models?.providers?.openai;
-    if (provider) {
-      provider.apiKey = "sk-stale-runtime"; // pragma: allowlist secret
-    }
-    expect(
-      projectConfigOntoPairedRuntimeSourceSnapshot({
-        config: staleConfig,
+    expect(() =>
+      applyMergePatchToPairedRuntimeConfig({
         runtimeConfig,
-        sourceConfig,
+        patch: {
+          models: {
+            providers: {
+              openai: {
+                apiKey: "sk-stale-runtime", // pragma: allowlist secret
+                models: [],
+              },
+            },
+          },
+        },
       }),
-    ).toBeUndefined();
+    ).toThrow("Cannot override a resolved SecretRef");
   });
 
   it("preserves SecretRefs when an unrelated top-level branch is removed", () => {
     const sourceConfig = { ...createSourceConfig(), tools: { allow: ["brokered_action"] } };
     const runtimeConfig = { ...createRuntimeConfig(), tools: { allow: ["brokered_action"] } };
-    const scopedConfig = structuredClone(runtimeConfig);
-    delete scopedConfig.tools;
+    setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
 
-    expect(
-      projectConfigOntoPairedRuntimeSourceSnapshot({
-        config: scopedConfig,
-        runtimeConfig,
-        sourceConfig,
-      }),
-    ).toEqual(createSourceConfig());
+    const scopedConfig = applyMergePatchToPairedRuntimeConfig({
+      runtimeConfig,
+      patch: { tools: null } as unknown as OpenClawConfig,
+    });
+
+    expect(getRuntimeConfigSourcePair(scopedConfig)).toEqual(createSourceConfig());
   });
 
-  it("preserves SecretRefs when a scoped patch changes an array sibling", () => {
+  it("preserves SecretRefs when a scoped patch carries an unchanged array credential", () => {
     const secretRef = { source: "env", provider: "default", id: "ACCOUNT_API_KEY" } as const;
     const sourceConfig = {
       plugins: {
@@ -163,23 +163,24 @@ describe("runtime config snapshot writes", () => {
       }
     ).accounts;
     runtimeAccounts[0]!.apiKey = "resolved-secret";
-    const scopedConfig = structuredClone(runtimeConfig);
-    const scopedAccounts = (
-      scopedConfig.plugins?.entries?.brokered?.config as {
-        accounts: Array<{ apiKey: unknown; label: string }>;
-      }
-    ).accounts;
-    scopedAccounts[0]!.label = "scoped";
+    setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
 
-    const projected = projectConfigOntoPairedRuntimeSourceSnapshot({
-      config: scopedConfig,
+    const scopedConfig = applyMergePatchToPairedRuntimeConfig({
       runtimeConfig,
-      sourceConfig,
+      patch: {
+        plugins: {
+          entries: {
+            brokered: {
+              config: { accounts: [{ apiKey: "resolved-secret", label: "scoped" }] },
+            },
+          },
+        },
+      },
     });
 
     expect(
       (
-        projected?.plugins?.entries?.brokered?.config as {
+        getRuntimeConfigSourcePair(scopedConfig)?.plugins?.entries?.brokered?.config as {
           accounts: Array<{ apiKey: unknown; label: string }>;
         }
       ).accounts[0],

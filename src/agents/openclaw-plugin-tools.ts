@@ -4,10 +4,7 @@
  * This module builds runtime plugin tools from config/options, delivery context,
  * auth profiles, and the current runtime config snapshot.
  */
-import {
-  projectConfigOntoPairedRuntimeSourceSnapshot,
-  selectApplicableRuntimeConfig,
-} from "../config/config.js";
+import { selectApplicableRuntimeConfig } from "../config/config.js";
 import {
   getRuntimeConfigSourcePair,
   getRuntimeConfigSnapshot,
@@ -98,20 +95,9 @@ export function resolveOpenClawPluginToolsForOptions(params: {
         })
     : undefined;
   const credentialBrokerRuntimeConfig = resolveCurrentRuntimeConfig();
-  const runtimeConfigSnapshot = getRuntimeConfigSnapshot() ?? undefined;
-  const runtimeSourceConfigSnapshot = getRuntimeConfigSourceSnapshot() ?? undefined;
-  const preparedCredentialBrokerSourceConfig = credentialBrokerRuntimeConfig
+  const pairedCredentialBrokerSourceConfig = credentialBrokerRuntimeConfig
     ? getRuntimeConfigSourcePair(credentialBrokerRuntimeConfig)
     : undefined;
-  const pairedCredentialBrokerSourceConfig =
-    preparedCredentialBrokerSourceConfig ??
-    (credentialBrokerRuntimeConfig && runtimeConfigSnapshot && runtimeSourceConfigSnapshot
-      ? projectConfigOntoPairedRuntimeSourceSnapshot({
-          config: credentialBrokerRuntimeConfig,
-          runtimeConfig: runtimeConfigSnapshot,
-          sourceConfig: runtimeSourceConfigSnapshot,
-        })
-      : undefined);
   // A process-global source snapshot is credential metadata only for its paired runtime.
   // Unrelated explicit configs keep their own literal/env semantics.
   const credentialBrokerSourceConfig =

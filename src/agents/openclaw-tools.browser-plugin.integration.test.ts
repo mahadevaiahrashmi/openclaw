@@ -1,7 +1,11 @@
 // Verifies OpenClaw plugin tools are resolved with browser/runtime context.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
-import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
+import {
+  applyMergePatchToPairedRuntimeConfig,
+  resetConfigRuntimeState,
+  setRuntimeConfigSnapshot,
+  type OpenClawConfig,
+} from "../config/config.js";
 import { activateSecretsRuntimeSnapshot, clearSecretsRuntimeSnapshot } from "../secrets/runtime.js";
 import { resolveOpenClawPluginToolsForOptions } from "./openclaw-plugin-tools.js";
 import { createOpenClawTools } from "./openclaw-tools.js";
@@ -302,11 +306,11 @@ describe("createOpenClawTools browser plugin integration", () => {
       },
       tools: { alsoAllow: ["tavily_search"] },
     } as OpenClawConfig;
-    const scopedRuntimeConfig = {
-      ...runtimeConfig,
-      tools: { alsoAllow: ["tavily_search", "tavily_extract"] },
-    } as OpenClawConfig;
     setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
+    const scopedRuntimeConfig = applyMergePatchToPairedRuntimeConfig({
+      runtimeConfig,
+      patch: { tools: { alsoAllow: ["tavily_search", "tavily_extract"] } },
+    });
 
     resolveOpenClawPluginToolsForOptions({
       options: {
