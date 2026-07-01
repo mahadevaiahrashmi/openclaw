@@ -1971,12 +1971,6 @@ private fun PermissionContinueButton(onClick: () -> Unit) {
   ) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
       Text(text = "Continue", style = ClawTheme.type.title.copy(fontSize = 18.sp, lineHeight = 23.sp), color = ClawTheme.colors.primaryText)
-      Icon(
-        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-        contentDescription = null,
-        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 20.dp).size(19.dp),
-        tint = ClawTheme.colors.primaryText,
-      )
     }
   }
 }
