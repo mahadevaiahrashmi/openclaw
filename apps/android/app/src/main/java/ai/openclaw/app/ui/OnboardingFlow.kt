@@ -1585,41 +1585,34 @@ private fun NodeApprovalPendingContent(
     textAlign = TextAlign.Center,
   )
   Spacer(modifier = Modifier.height(18.dp))
-  Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Text(
-      text = "Run these on the Gateway computer:",
-      style = ClawTheme.type.caption,
-      color = ClawTheme.colors.textMuted,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.fillMaxWidth(),
+  Column(
+    modifier = Modifier.fillMaxWidth(),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    NodeApprovalCommandStep(
+      label = "Find the pending request",
+      command = "openclaw nodes pending",
+      onCopyCommand = onCopyCommand,
     )
-    ApprovalCommandBlock(command = "openclaw nodes pending", onCopy = { onCopyCommand("openclaw nodes pending") })
-    if (hasRequestId) {
-      ApprovalCommandBlock(command = command, onCopy = { onCopyCommand(command) })
-    } else {
-      Text(
-        text = "Then run openclaw nodes approve REQUEST_ID with the requestId from pending.",
-        style = ClawTheme.type.caption,
-        color = ClawTheme.colors.textMuted,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth(),
-      )
-    }
-    Text(
-      text =
+    NodeApprovalCommandStep(
+      label =
         if (hasRequestId) {
-          "You may need to add --url <gateway-url> and --token <token> for a custom or remote Gateway."
+          "Approve this phone"
         } else {
-          "Copy the requestId from pending first. You may need to add --url <gateway-url> and --token <token>."
+          "Approve the requestId from pending"
         },
+      command = command,
+      onCopyCommand = onCopyCommand,
+    )
+    Text(
+      text = "You may need to add --url <gateway-url> and --token <token> for a custom or remote Gateway.",
       style = ClawTheme.type.caption,
       color = ClawTheme.colors.textMuted,
       textAlign = TextAlign.Center,
       modifier = Modifier.fillMaxWidth(),
     )
   }
-  Spacer(modifier = Modifier.height(20.dp))
-  GatewayRecoveryProgress(items = gatewayRecoveryProgressItems(GatewayRecoveryUiState.NodeCapabilityApprovalPending))
   Spacer(modifier = Modifier.height(14.dp))
   Text(
     text = "OpenClaw will continue automatically after approval.",
@@ -1627,6 +1620,26 @@ private fun NodeApprovalPendingContent(
     color = ClawTheme.colors.textSubtle,
     textAlign = TextAlign.Center,
   )
+}
+
+@Composable
+private fun NodeApprovalCommandStep(
+  label: String,
+  command: String,
+  onCopyCommand: (String) -> Unit,
+) {
+  Column(
+    modifier = Modifier.fillMaxWidth(),
+    verticalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Text(
+      text = label,
+      style = ClawTheme.type.caption,
+      color = ClawTheme.colors.textMuted,
+      modifier = Modifier.fillMaxWidth(),
+    )
+    ApprovalCommandBlock(command = command, onCopy = { onCopyCommand(command) })
+  }
 }
 
 @Composable
@@ -2062,10 +2075,7 @@ internal fun gatewayRecoveryProgressItems(
         GatewayRecoveryProgressItem("Run the approval command on the Gateway", GatewayRecoveryProgressStatus.Pending),
       )
     GatewayRecoveryUiState.NodeCapabilityApprovalPending ->
-      listOf(
-        GatewayRecoveryProgressItem("Gateway paired", GatewayRecoveryProgressStatus.Complete),
-        GatewayRecoveryProgressItem("Waiting for node access approval", GatewayRecoveryProgressStatus.Current),
-      )
+      emptyList()
     GatewayRecoveryUiState.Connected,
     GatewayRecoveryUiState.Failed,
     -> emptyList()
