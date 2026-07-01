@@ -391,7 +391,7 @@ plugin code.
 | `method`               | Yes      | `POST`. Other methods are rejected.                                                                                                                                 |
 | `credentialHeader`     | Yes      | `Authorization` or `X-Api-Key`.                                                                                                                                     |
 | `credentialScheme`     | No       | Optional scheme such as `Bearer`.                                                                                                                                   |
-| `headers`              | No       | Static, non-credential request headers. Credential, routing, malformed, or newline-bearing header entries are rejected.                                             |
+| `headers`              | No       | Static, non-credential request headers. Only `Accept`, `Accept-Language`, `User-Agent`, `X-Client-Source`, and `X-Client-Version` are accepted.                     |
 | `maxRequestBodyBytes`  | Yes      | Positive JSON request-body limit, at most 1 MiB.                                                                                                                    |
 | `maxResponseBodyBytes` | Yes      | Positive JSON response-body limit, at most 64 MiB.                                                                                                                  |
 | `timeoutMs`            | Yes      | Positive request timeout, at most 120 seconds.                                                                                                                      |
@@ -416,9 +416,10 @@ or resolved value.
 
 Broker authorization reuses the prepared conversation capability profile and
 existing layered tool policy. The profile must contain agent, conversation,
-channel, and sender identity; an active policy must explicitly allow the tool,
-plugin id, or `group:plugins`; and every active deny/narrowing policy still
-wins. Missing scope or an implicit/default tool grant fails closed.
+channel, and sender identity; the normal default-plugin selection or an active
+policy must allow the tool, plugin id, or `group:plugins`; and every active
+deny/narrowing policy still wins. Missing scope, an optional tool without an
+explicit grant, or a tool excluded by a narrowing policy fails closed.
 Scope-less MCP and control-plane catalogs omit tools activated by structured
 SecretRefs instead of advertising an operation they cannot authorize.
 

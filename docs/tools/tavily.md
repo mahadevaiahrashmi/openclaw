@@ -141,14 +141,15 @@ The generic `web_search` tool with Tavily as provider supports `query` and `coun
 
   </Accordion>
 
-  <Accordion title="Broker a SecretRef for explicit Tavily tools">
+  <Accordion title="Broker a SecretRef for Tavily tools">
     `tavily_search` and `tavily_extract` can execute with an opaque,
     conversation-scoped request handle when `apiKey` is a structured SecretRef.
     The resolved value stays inside the host broker and is removed from the
     plugin tool factory's config snapshots.
 
-    Brokered operations require an explicit tool-policy grant. Use `alsoAllow`
-    to preserve the active tool profile while adding the two tools:
+    Tavily's default-enabled tools preserve their normal access when the active
+    profile has no restrictive allowlist. If a profile narrows tool access, use
+    `alsoAllow` to preserve that profile while adding the two tools:
 
     ```json5
     {

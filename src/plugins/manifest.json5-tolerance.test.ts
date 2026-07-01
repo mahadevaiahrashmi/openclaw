@@ -295,6 +295,16 @@ describe("loadPluginManifest JSON5 tolerance", () => {
             { ...operation, id: "traversal", secretInputPath: "service..token" },
             { ...operation, id: "environment", baseUrlEnv: "unsafe-env-name" },
             { ...operation, id: "header", headers: { Authorization: "static-secret" } },
+            {
+              ...operation,
+              id: "routing-header",
+              headers: { "X-Original-URL": "/admin" },
+            },
+            {
+              ...operation,
+              id: "method-header",
+              headers: { "X-HTTP-Method-Override": "GET" },
+            },
           ],
         },
         configSchema: { type: "object" },

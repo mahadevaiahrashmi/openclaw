@@ -42,18 +42,12 @@ const CREDENTIAL_BROKER_ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]{0,127}$/;
 const CREDENTIAL_BROKER_OPERATION_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 const CREDENTIAL_BROKER_HEADER_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9-]{0,63}$/;
 const CREDENTIAL_BROKER_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
-const CREDENTIAL_BROKER_BLOCKED_HEADERS = new Set([
-  "authorization",
-  "connection",
-  "content-length",
-  "cookie",
-  "host",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "set-cookie",
-  "transfer-encoding",
-  "upgrade",
-  "x-api-key",
+const CREDENTIAL_BROKER_SAFE_STATIC_HEADERS = new Set([
+  "accept",
+  "accept-language",
+  "user-agent",
+  "x-client-source",
+  "x-client-version",
 ]);
 
 type PluginManifestLoadCacheEntry = {
@@ -904,7 +898,7 @@ function normalizeCredentialBrokerHeaders(
     const name = rawName.trim();
     if (
       !CREDENTIAL_BROKER_HEADER_NAME_PATTERN.test(name) ||
-      CREDENTIAL_BROKER_BLOCKED_HEADERS.has(name.toLowerCase()) ||
+      !CREDENTIAL_BROKER_SAFE_STATIC_HEADERS.has(name.toLowerCase()) ||
       typeof rawValue !== "string" ||
       rawValue.length > 512 ||
       /[\r\n]/u.test(rawValue)

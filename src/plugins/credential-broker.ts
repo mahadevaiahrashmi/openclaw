@@ -262,9 +262,24 @@ function readOperationCredential(params: {
 function hasExplicitScopedGrant(params: {
   pluginId: string;
   tool: string;
+  defaultToolNames: readonly string[];
   profile: ResolvedConversationCapabilityProfile;
 }): boolean {
-  const raw = params.profile.policy.explicitToolAllowlist.filter(
+  const explicitAllowlist = params.profile.policy.explicitToolAllowlist;
+  const isDefaultTool = params.defaultToolNames.some(
+    (toolName) => normalizeToolName(toolName) === normalizeToolName(params.tool),
+  );
+  const selectsDefaultPluginTools =
+    explicitAllowlist.length === 0 ||
+    explicitAllowlist.some(
+      (entry) => normalizeToolName(entry) === DEFAULT_PLUGIN_TOOLS_ALLOWLIST_ENTRY,
+    );
+  // The normal tool pipeline includes non-optional plugin tools when no
+  // restrictive allowlist applies. Preserve that prepared, scoped selection.
+  if (isDefaultTool && selectsDefaultPluginTools) {
+    return true;
+  }
+  const raw = explicitAllowlist.filter(
     (entry) => normalizeToolName(entry) !== DEFAULT_PLUGIN_TOOLS_ALLOWLIST_ENTRY,
   );
   raw.push(
@@ -320,6 +335,7 @@ function assertPreparedScope(params: {
   pluginId: string;
   operation: PluginManifestCredentialBrokerOperation;
   registrationToolNames: readonly string[];
+  defaultToolNames: readonly string[];
   profile: ResolvedConversationCapabilityProfile;
 }): void {
   const { profile, operation } = params;
@@ -338,6 +354,7 @@ function assertPreparedScope(params: {
     !hasExplicitScopedGrant({
       pluginId: params.pluginId,
       tool: operation.tool,
+      defaultToolNames: params.defaultToolNames,
       profile,
     }) ||
     !isAllowedByScopedPolicies({
@@ -530,6 +547,7 @@ export function createCredentialBrokerClient(params: {
   pluginId: string;
   operations: readonly PluginManifestCredentialBrokerOperation[];
   registrationToolNames: readonly string[];
+  defaultToolNames: readonly string[];
   context: CredentialBrokerContext;
   deps?: Partial<CredentialBrokerDeps>;
 }): OpenClawCredentialBroker {
@@ -557,6 +575,7 @@ export function createCredentialBrokerClient(params: {
         pluginId: params.pluginId,
         operation,
         registrationToolNames: params.registrationToolNames,
+        defaultToolNames: params.defaultToolNames,
         profile: params.context.profile,
       });
       const hasSecretRef = hasOperationSecretRef({

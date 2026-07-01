@@ -105,6 +105,7 @@ function createFixture(params?: {
   runtimeCredential?: unknown;
   fetchError?: unknown;
   env?: NodeJS.ProcessEnv;
+  defaultEnabled?: boolean;
 }) {
   const config = createConfig(params);
   const runtimeConfig = createRuntimeConfig(config, params?.runtimeCredential ?? SECRET);
@@ -134,6 +135,7 @@ function createFixture(params?: {
     pluginId: "tavily",
     operations: [OPERATION],
     registrationToolNames: ["tavily_search"],
+    defaultToolNames: params?.defaultEnabled === false ? [] : ["tavily_search"],
     context: {
       profile: createProfile(config),
       sourceConfig: config,
@@ -254,9 +256,12 @@ describe("credential broker", () => {
     await expect(handle.execute()).rejects.toThrow("already consumed");
   });
 
-  it("denies absent, conflicting, and sender-scoped grants before resolution", () => {
+  it("preserves default tool access while denying absent, conflicting, and sender grants", () => {
+    expect(() =>
+      createFixture().broker.createRequest({ operationId: "search", body: {} }),
+    ).not.toThrow();
     for (const fixture of [
-      createFixture(),
+      createFixture({ defaultEnabled: false }),
       createFixture({ allow: ["tavily_search"], deny: ["tavily"] }),
       createFixture({ allow: ["tavily"], senderDeny: ["group:plugins"] }),
     ]) {
@@ -299,6 +304,7 @@ describe("credential broker", () => {
       pluginId: "tavily",
       operations: [OPERATION],
       registrationToolNames: ["tavily_search"],
+      defaultToolNames: ["tavily_search"],
       context: {
         profile: patchedProfile,
         sourceConfig: config,
@@ -330,6 +336,7 @@ describe("credential broker", () => {
       pluginId: "tavily",
       operations: [OPERATION],
       registrationToolNames: ["tavily_search"],
+      defaultToolNames: ["tavily_search"],
       context: {
         profile: createProfile(config),
         sourceConfig: config,
@@ -392,6 +399,7 @@ describe("credential broker", () => {
       pluginId: "tavily",
       operations: [OPERATION],
       registrationToolNames: ["tavily_search"],
+      defaultToolNames: ["tavily_search"],
       context: {
         profile: createProfile(config),
         sourceConfig: config,
