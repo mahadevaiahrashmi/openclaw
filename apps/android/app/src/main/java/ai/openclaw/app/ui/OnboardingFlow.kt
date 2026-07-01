@@ -113,6 +113,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -488,10 +489,20 @@ fun OnboardingFlow(
       AlertDialog(
         onDismissRequest = viewModel::declineGatewayTrustPrompt,
         containerColor = ClawTheme.colors.surfaceRaised,
-        title = { Text("Trust this gateway?", style = ClawTheme.type.section, color = ClawTheme.colors.text) },
+        title = { Text(stringResource(R.string.trust_this_gateway), style = ClawTheme.type.section, color = ClawTheme.colors.text) },
         text = {
+          val message =
+            if (prompt.previousFingerprintSha256.isNullOrBlank()) {
+              stringResource(R.string.gateway_trust_first_seen, prompt.fingerprintSha256)
+            } else {
+              stringResource(
+                R.string.gateway_trust_changed,
+                prompt.previousFingerprintSha256,
+                prompt.fingerprintSha256,
+              )
+            }
           Text(
-            "Verify the certificate fingerprint before continuing.\n\n${prompt.fingerprintSha256}",
+            message,
             style = ClawTheme.type.body,
             color = ClawTheme.colors.textMuted,
           )
